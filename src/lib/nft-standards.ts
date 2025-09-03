@@ -359,6 +359,73 @@ export const THIRDWEB_OPENEDITONERC721_ABI = [
   }
 ] as const;
 
+// Thirdweb ERC1155 Extension ABI (for signature minting and claim functions)
+export const THIRDWEB_ERC1155_EXTENSION_ABI = [
+  {
+    inputs: [
+      { name: "_receiver", type: "address" },
+      { name: "_tokenId", type: "uint256" },
+      { name: "_quantity", type: "uint256" },
+      { name: "_currency", type: "address" },
+      { name: "_pricePerToken", type: "uint256" },
+      {
+        components: [
+          { name: "proof", type: "bytes32[]" },
+          { name: "quantityLimitPerWallet", type: "uint256" },
+          { name: "pricePerToken", type: "uint256" },
+          { name: "currency", type: "address" }
+        ],
+        name: "_allowlistProof",
+        type: "tuple"
+      },
+      { name: "_data", type: "bytes" }
+    ],
+    name: "claim",
+    outputs: [],
+    stateMutability: "payable",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "tokenId", type: "uint256" }
+    ],
+    name: "claimCondition",
+    outputs: [
+      { name: "startTimestamp", type: "uint256" },
+      { name: "maxClaimableSupply", type: "uint256" },
+      { name: "supplyClaimed", type: "uint256" },
+      { name: "merkleRoot", type: "bytes32" },
+      { name: "pricePerToken", type: "uint256" },
+      { name: "currency", type: "address" },
+      { name: "metadata", type: "string" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "tokenId", type: "uint256" }
+    ],
+    name: "uri",
+    outputs: [
+      { name: "", type: "string" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  },
+  {
+    inputs: [
+      { name: "id", type: "uint256" }
+    ],
+    name: "totalSupply",
+    outputs: [
+      { name: "", type: "uint256" }
+    ],
+    stateMutability: "view",
+    type: "function"
+  }
+] as const;
+
 // Native ETH address for thirdweb contracts
 export const THIRDWEB_NATIVE_TOKEN = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE" as Address;
 

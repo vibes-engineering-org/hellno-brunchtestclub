@@ -240,7 +240,7 @@ export function NFTMintButton({
 
   // Get provider config
   const providerConfig = contractInfo
-    ? getProviderConfig(contractInfo.provider, contractInfo)
+    ? getProviderConfig(contractInfo.provider, contractInfo, mintParams)
     : null;
 
   // Check if user is on the correct network
@@ -329,26 +329,38 @@ export function NFTMintButton({
 
   // Detect NFT provider and validate
   const detectAndValidate = async () => {
+    console.group("🔍 [DETECT DEBUG] Starting provider detection");
+    console.log("Mint params:", mintParams);
+    
     dispatch({ type: "DETECT_START" });
 
     try {
       // Detect provider
+      console.log("🔍 [DETECT DEBUG] Calling detectNFTProvider...");
       const info = await detectNFTProvider(mintParams);
+      console.log("🔍 [DETECT DEBUG] Detected provider info:", info);
 
       // Validate parameters
+      console.log("🔍 [DETECT DEBUG] Validating parameters...");
       const validation = validateParameters(mintParams, info);
+      console.log("🔍 [DETECT DEBUG] Validation result:", validation);
 
       if (!validation.isValid) {
+        console.error("❌ [DETECT DEBUG] Validation failed:", validation.errors);
         dispatch({ type: "VALIDATION_ERROR", payload: validation.errors });
+        console.groupEnd();
         return;
       }
 
       // Fetch optimized price data
+      console.log("🔍 [DETECT DEBUG] Fetching price data...");
       const client = getClientForChain(chainId);
       const fetchedPriceData = await fetchPriceData(client, mintParams, info);
+      console.log("🔍 [DETECT DEBUG] Price data:", fetchedPriceData);
 
       // Update contract info with ERC20 details and claim data
       if (fetchedPriceData.erc20Details) {
+        console.log("🔍 [DETECT DEBUG] Adding ERC20 details to contract info");
         info.erc20Token = fetchedPriceData.erc20Details
           .address as `0x${string}`;
         info.erc20Symbol = fetchedPriceData.erc20Details.symbol;
@@ -357,8 +369,16 @@ export function NFTMintButton({
 
       // Add claim data if available
       if (fetchedPriceData.claim) {
+        console.log("🔍 [DETECT DEBUG] Adding claim data to contract info");
         info.claim = fetchedPriceData.claim;
       }
+
+      console.log("🔍 [DETECT DEBUG] Final contract info:", info);
+      console.log("🔍 [DETECT DEBUG] Final price data:", {
+        mintPrice: fetchedPriceData.mintPrice,
+        totalCost: fetchedPriceData.totalCost,
+        erc20Details: fetchedPriceData.erc20Details,
+      });
 
       dispatch({
         type: "DETECT_SUCCESS",
@@ -371,12 +391,20 @@ export function NFTMintButton({
           },
         },
       });
+      
+      console.log("✅ [DETECT DEBUG] Detection completed successfully");
     } catch (err) {
+      console.error("❌ [DETECT DEBUG] Detection failed:", err);
+      console.error("Error type:", typeof err);
+      console.error("Error message:", err instanceof Error ? err.message : String(err));
+      console.error("Error stack:", err instanceof Error ? err.stack : "No stack");
       dispatch({
         type: "DETECT_ERROR",
         payload: "Failed to detect NFT contract type",
       });
     }
+    
+    console.groupEnd();
   };
 
   // Check allowance only (without re-detecting everything)
@@ -492,31 +520,51 @@ export function NFTMintButton({
   };
 
   const handleMint = async () => {
+    console.group("🟡 [MINT DEBUG] Starting mint transaction");
+    console.log("Connected:", isConnected);
+    console.log("Contract Info:", contractInfo);
+    console.log("Provider Config:", providerConfig);
+    console.log("Mint Params:", mintParams);
+    console.log("Price Data:", priceData);
+    
     if (!isConnected) {
+      console.log("❌ [MINT DEBUG] Not connected, connecting wallet");
       await handleConnectWallet();
+      console.groupEnd();
       return;
     }
 
     if (!contractInfo || !providerConfig) {
+      console.error("❌ [MINT DEBUG] Missing required info:", {
+        contractInfo: !!contractInfo,
+        providerConfig: !!providerConfig
+      });
       dispatch({
         type: "TX_ERROR",
         payload: "Contract information not available",
       });
+      console.groupEnd();
       return;
     }
 
     try {
+      console.log("🟢 [MINT DEBUG] Starting mint transaction preparation");
       dispatch({ type: "MINT_START" });
 
+      console.log("🔧 [MINT DEBUG] Building transaction arguments");
       const args = providerConfig.mintConfig.buildArgs(mintParams);
+      console.log("Built args:", args);
 
       const value = priceData.totalCost || BigInt(0);
+      console.log("Transaction value:", value.toString(), "wei");
 
       // Handle Manifold's special case
       const mintAddress =
         contractInfo.provider === "manifold" && contractInfo.extensionAddress
           ? contractInfo.extensionAddress
           : contractAddress;
+      console.log("Mint address:", mintAddress);
+      console.log("Provider:", contractInfo.provider);
 
       // Prepare contract config based on provider type
       let contractConfig: any;
@@ -530,13 +578,98 @@ export function NFTMintButton({
         chainId,
       };
 
+      console.log("🔧 [MINT DEBUG] Final contract config:");
+      console.log("Address:", contractConfig.address);
+      console.log("Function:", contractConfig.functionName);
+      console.log("Args:", contractConfig.args);
+      console.log("Value:", contractConfig.value.toString());
+      console.log("Chain ID:", contractConfig.chainId);
+      console.log("ABI function count:", contractConfig.abi.length);
+
+      // Validate contract state before minting
+      console.log("🔍 [MINT DEBUG] Validating contract state...");
+      try {
+        const client = getClientForChain(chainId);
+        
+        // Check basic contract existence
+        const bytecode = await client.getBytecode({ address: contractConfig.address });
+        if (!bytecode || bytecode === "0x") {
+          throw new Error("Contract not found at the specified address");
+        }
+        console.log("✅ [MINT DEBUG] Contract exists at address");
+
+        // Validate user's balance for payment
+        if (contractConfig.value > 0n) {
+          const balance = await client.getBalance({ address: address! });
+          console.log("User balance:", balance.toString(), "wei");
+          console.log("Required value:", contractConfig.value.toString(), "wei");
+          
+          if (balance < contractConfig.value) {
+            throw new Error(`Insufficient balance. Need ${contractConfig.value.toString()} wei but only have ${balance.toString()} wei`);
+          }
+          console.log("✅ [MINT DEBUG] User has sufficient balance");
+        }
+
+        // Try to validate the function exists in the contract
+        try {
+          await client.readContract({
+            address: contractConfig.address,
+            abi: [{
+              name: contractConfig.functionName,
+              type: "function",
+              inputs: [],
+              outputs: [],
+              stateMutability: "view"
+            }],
+            functionName: contractConfig.functionName,
+          });
+        } catch (readError) {
+          console.log("⚠️ [MINT DEBUG] Cannot validate function existence (expected for payable functions)");
+        }
+
+      } catch (validationError) {
+        console.error("❌ [MINT DEBUG] Contract validation failed:", validationError);
+        throw new Error(`Contract validation failed: ${validationError instanceof Error ? validationError.message : String(validationError)}`);
+      }
+
+      // Simulate the transaction first to catch errors early
+      console.log("🧪 [MINT DEBUG] Simulating transaction...");
+      try {
+        const client = getClientForChain(chainId);
+        const simulation = await client.simulateContract({
+          address: contractConfig.address,
+          abi: contractConfig.abi,
+          functionName: contractConfig.functionName,
+          args: contractConfig.args,
+          value: contractConfig.value,
+          account: address,
+        });
+        console.log("✅ [MINT DEBUG] Transaction simulation successful:", simulation.result);
+      } catch (simError) {
+        console.error("❌ [MINT DEBUG] Transaction simulation failed:");
+        console.error("Simulation error:", simError);
+        console.error("Error name:", simError instanceof Error ? simError.name : "Unknown");
+        console.error("Error message:", simError instanceof Error ? simError.message : String(simError));
+        console.error("This means the transaction would fail before reaching wallet");
+        throw new Error(`Transaction simulation failed: ${simError instanceof Error ? simError.message : String(simError)}`);
+      }
+
       // Execute the transaction
+      console.log("🚀 [MINT DEBUG] Simulation passed, executing writeContract...");
       await writeContract(contractConfig);
+      console.log("✅ [MINT DEBUG] writeContract call completed successfully");
 
       // The transaction has been initiated - we'll track it via writeData in the effect
     } catch (err) {
+      console.error("❌ [MINT DEBUG] Error in handleMint:", err);
+      console.error("Error type:", typeof err);
+      console.error("Error name:", err instanceof Error ? err.name : "Unknown");
+      console.error("Error message:", err instanceof Error ? err.message : String(err));
+      console.error("Error stack:", err instanceof Error ? err.stack : "No stack");
       handleError(err, "Mint transaction failed", "mint");
     }
+    
+    console.groupEnd();
   };
 
   // Centralized error handler
@@ -545,18 +678,41 @@ export function NFTMintButton({
     context: string,
     transactionType?: "approval" | "mint",
   ) => {
-    console.error(`${context}:`, error);
-    const message = error instanceof Error ? error.message : `${context}`;
+    console.group("🚨 [ERROR HANDLER] Processing error");
+    console.log("Context:", context);
+    console.log("Transaction Type:", transactionType);
+    console.error("Original error:", error);
+    console.error("Error type:", typeof error);
+    console.error("Error name:", error instanceof Error ? error.name : "Unknown");
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    
+    let userMessage = error instanceof Error ? error.message : `${context}`;
+
+    // Enhance error messages with debugging context
+    if (userMessage.includes("Transaction simulation failed")) {
+      userMessage = "🧪 Transaction would fail: " + userMessage.replace("Transaction simulation failed: ", "");
+    } else if (userMessage.includes("Contract validation failed")) {
+      userMessage = "🔍 Contract issue: " + userMessage.replace("Contract validation failed: ", "");
+    } else if (userMessage.includes("Insufficient balance")) {
+      userMessage = "💰 " + userMessage;
+    } else if (userMessage.includes("Contract not found")) {
+      userMessage = "📋 " + userMessage;
+    } else if (userMessage.includes("user rejected")) {
+      userMessage = "❌ Transaction cancelled by user";
+    }
 
     // Parse the error for better UX
     const parsed = parseError(error, transactionType || "mint");
     setParsedError(parsed);
 
-    dispatch({ type: "TX_ERROR", payload: message });
+    dispatch({ type: "TX_ERROR", payload: userMessage });
     // Use explicit transaction type if provided, otherwise fall back to state
     if ((transactionType || txType) === "mint") {
-      onMintError?.(message);
+      onMintError?.(userMessage);
     }
+    
+    console.log("Final user message:", userMessage);
+    console.groupEnd();
   };
 
   const handleRetry = () => {
@@ -565,6 +721,25 @@ export function NFTMintButton({
   };
 
   // Display helpers (quick win: centralized formatting)
+  const getNativeCurrencySymbol = (chainId: number) => {
+    switch (chainId) {
+      case 100: // Gnosis Chain
+        return "XDAI";
+      case 8453: // Base
+        return "ETH";
+      case 42161: // Arbitrum
+        return "ETH";
+      case 10: // Optimism
+        return "ETH";
+      case 42220: // Celo
+        return "CELO";
+      case 1: // Ethereum Mainnet
+        return "ETH";
+      default:
+        return "ETH";
+    }
+  };
+
   const formatPrice = (amount: bigint, decimals: number, symbol: string) => {
     if (amount === BigInt(0)) return "Free";
     return `${Number(amount) / 10 ** decimals} ${symbol}`;
@@ -579,7 +754,7 @@ export function NFTMintButton({
       );
     }
     return priceData.mintPrice
-      ? `${formatEther(priceData.mintPrice)} ETH`
+      ? `${formatEther(priceData.mintPrice)} ${getNativeCurrencySymbol(chainId)}`
       : "Free";
   };
 
@@ -593,13 +768,13 @@ export function NFTMintButton({
       );
     }
     return priceData.totalCost
-      ? `${formatEther(priceData.totalCost)} ETH`
+      ? `${formatEther(priceData.totalCost)} ${getNativeCurrencySymbol(chainId)}`
       : "Free";
   };
 
   const displayMintFee = () => {
     const fee = priceData.mintPrice || BigInt(0);
-    return fee > BigInt(0) ? `${formatEther(fee)} ETH` : "0 ETH";
+    return fee > BigInt(0) ? `${formatEther(fee)} ${getNativeCurrencySymbol(chainId)}` : `0 ${getNativeCurrencySymbol(chainId)}`;
   };
 
   const providerName = contractInfo?.provider
@@ -988,10 +1163,10 @@ export function NFTMintButton({
                       {erc20Details ? (
                         <>
                           <li>{erc20Details.symbol} for the NFT price</li>
-                          <li>ETH for gas fees</li>
+                          <li>{getNativeCurrencySymbol(chainId)} for gas fees</li>
                         </>
                       ) : (
-                        <li>ETH for both NFT price and gas fees</li>
+                        <li>{getNativeCurrencySymbol(chainId)} for both NFT price and gas fees</li>
                       )}
                     </ul>
                   </div>

@@ -1,6 +1,6 @@
 import { type Address, maxUint256 } from "viem";
 import type { ProviderConfig } from "~/lib/types";
-import { MANIFOLD_EXTENSION_ABI, MANIFOLD_ERC721_EXTENSION_ABI, MANIFOLD_ERC1155_EXTENSION_ABI, KNOWN_CONTRACTS, PRICE_DISCOVERY_ABI, MINT_ABI, THIRDWEB_OPENEDITONERC721_ABI, THIRDWEB_NATIVE_TOKEN } from "~/lib/nft-standards";
+import { MANIFOLD_EXTENSION_ABI, MANIFOLD_ERC721_EXTENSION_ABI, MANIFOLD_ERC1155_EXTENSION_ABI, KNOWN_CONTRACTS, PRICE_DISCOVERY_ABI, MINT_ABI, THIRDWEB_OPENEDITONERC721_ABI, THIRDWEB_ERC1155_EXTENSION_ABI, THIRDWEB_NATIVE_TOKEN } from "~/lib/nft-standards";
 
 export const PROVIDER_CONFIGS: Record<string, ProviderConfig> = {
   manifold: {
@@ -175,7 +175,7 @@ function getManifoldABI(contractInfo?: any) {
 }
 
 // Helper to get config by provider name
-export function getProviderConfig(provider: string, contractInfo?: any): ProviderConfig {
+export function getProviderConfig(provider: string, contractInfo?: any, params?: any): ProviderConfig {
   const baseConfig = PROVIDER_CONFIGS[provider] || PROVIDER_CONFIGS.generic;
   
   // For Manifold, we need to inject the correct ABI based on contract type
@@ -195,40 +195,134 @@ export function getProviderConfig(provider: string, contractInfo?: any): Provide
     };
   }
   
-  // For thirdweb, we need to inject the claim condition data
-  if (provider === "thirdweb" && contractInfo?.claimCondition) {
-    return {
-      ...baseConfig,
-      mintConfig: {
-        ...baseConfig.mintConfig,
-        buildArgs: (params) => {
-          const pricePerToken = contractInfo.claimCondition.pricePerToken || BigInt(0);
-          const currency = contractInfo.claimCondition.currency || THIRDWEB_NATIVE_TOKEN;
-          
-          return [
-            params.recipient || params.contractAddress, // _receiver
-            BigInt(params.amount || 1), // _quantity
-            currency, // _currency
-            pricePerToken, // _pricePerToken
-            {
-              proof: params.merkleProof || [],
-              quantityLimitPerWallet: maxUint256,
-              pricePerToken: maxUint256,
-              currency: "0x0000000000000000000000000000000000000000"
-            }, // _allowlistProof
-            "0x" // _data
-          ];
-        },
-        calculateValue: (price, params) => {
-          const currency = contractInfo.claimCondition?.currency;
-          
-          if (!currency || currency.toLowerCase() === THIRDWEB_NATIVE_TOKEN.toLowerCase()) {
-            return price * BigInt(params.amount || 1);
+  // For thirdweb, we need to handle different contract types
+  if (provider === "thirdweb") {
+    // Handle ERC1155 Extensions with proper ABI and parameters
+    if (contractInfo?.isERC1155) {
+      console.log("[Provider Config] Using Thirdweb ERC1155 Extension configuration");
+      
+      // For the specific hardcoded contract, use exact parameters from successful transaction
+      if (params?.contractAddress?.toLowerCase() === "0xcd0bafa3bba1b32869343fb69d2778daf4412181") {
+        console.log("[Provider Config] Using exact claim parameters from successful transaction");
+        return {
+          ...baseConfig,
+          mintConfig: {
+            abi: THIRDWEB_ERC1155_EXTENSION_ABI,
+            functionName: "claim",
+            buildArgs: (params) => {
+              console.group("🔧 [PROVIDER CONFIG] Building Thirdweb hardcoded args");
+              console.log("Params received:", params);
+              
+              const args = [
+                params.recipient, // _receiver
+                BigInt(0), // _tokenId = 0 (from successful transaction)
+                BigInt(params.amount || 1), // _quantity
+                THIRDWEB_NATIVE_TOKEN, // _currency (native XDAI)
+                BigInt("1000000000000000000"), // _pricePerToken (1 XDAI)
+                {
+                  proof: [], // empty proof array
+                  quantityLimitPerWallet: BigInt(0), // 0 limit
+                  pricePerToken: maxUint256, // max uint256
+                  currency: "0x0000000000000000000000000000000000000000" // zero address
+                }, // _allowlistProof
+                "0x" // _data (empty)
+              ];
+              
+              console.log("Built hardcoded args:", args);
+              console.groupEnd();
+              return args;
+            },
+            calculateValue: (price, params) => {
+              return BigInt("1000000000000000000") * BigInt(params.amount || 1); // 1 XDAI per token
+            }
+          },
+          priceDiscovery: {
+            abis: [THIRDWEB_ERC1155_EXTENSION_ABI],
+            functionNames: ["claimCondition"],
+            requiresInstanceId: false
           }
-          return BigInt(0);
-        }
+        };
       }
-    };
+      
+      return {
+        ...baseConfig,
+        mintConfig: {
+          abi: THIRDWEB_ERC1155_EXTENSION_ABI,
+          functionName: "claim",
+          buildArgs: (params) => {
+            // For ERC1155 Extensions, try to get price from hardcoded value or use 0
+            const pricePerToken = params.contractAddress?.toLowerCase() === "0xcd0bafa3bba1b32869343fb69d2778daf4412181" 
+              ? BigInt("1000000000000000000") // 1 XDAI
+              : contractInfo.claimCondition?.pricePerToken || BigInt(0);
+            const currency = contractInfo.claimCondition?.currency || THIRDWEB_NATIVE_TOKEN;
+            
+            return [
+              params.recipient, // _receiver
+              BigInt(params.tokenId || "1"), // _tokenId (use provided token ID, default to 1)
+              BigInt(params.amount || 1), // _quantity
+              currency, // _currency
+              pricePerToken, // _pricePerToken
+              {
+                proof: params.merkleProof || [],
+                quantityLimitPerWallet: maxUint256,
+                pricePerToken: maxUint256,
+                currency: "0x0000000000000000000000000000000000000000"
+              }, // _allowlistProof
+              "0x" // _data
+            ];
+          },
+          calculateValue: (price, params) => {
+            const currency = contractInfo.claimCondition?.currency;
+            
+            if (!currency || currency.toLowerCase() === THIRDWEB_NATIVE_TOKEN.toLowerCase()) {
+              return price * BigInt(params.amount || 1);
+            }
+            return BigInt(0);
+          }
+        },
+        priceDiscovery: {
+          abis: [THIRDWEB_ERC1155_EXTENSION_ABI],
+          functionNames: ["claimCondition"],
+          requiresInstanceId: false
+        }
+      };
+    }
+    
+    // Handle ERC721 Drop contracts (existing logic)
+    if (contractInfo?.claimCondition) {
+      return {
+        ...baseConfig,
+        mintConfig: {
+          ...baseConfig.mintConfig,
+          buildArgs: (params) => {
+            const pricePerToken = contractInfo.claimCondition.pricePerToken || BigInt(0);
+            const currency = contractInfo.claimCondition.currency || THIRDWEB_NATIVE_TOKEN;
+            
+            return [
+              params.recipient || params.contractAddress, // _receiver
+              BigInt(params.amount || 1), // _quantity
+              currency, // _currency
+              pricePerToken, // _pricePerToken
+              {
+                proof: params.merkleProof || [],
+                quantityLimitPerWallet: maxUint256,
+                pricePerToken: maxUint256,
+                currency: "0x0000000000000000000000000000000000000000"
+              }, // _allowlistProof
+              "0x" // _data
+            ];
+          },
+          calculateValue: (price, params) => {
+            const currency = contractInfo.claimCondition?.currency;
+            
+            if (!currency || currency.toLowerCase() === THIRDWEB_NATIVE_TOKEN.toLowerCase()) {
+              return price * BigInt(params.amount || 1);
+            }
+            return BigInt(0);
+          }
+        }
+      };
+    }
   }
   
   return baseConfig;

@@ -363,7 +363,128 @@ export async function fetchPriceData(
       totalCost: (creatorFeePerNFT + protocolFeePerNFT) * amount
     };
   } else if (contractInfo.provider === "thirdweb") {
-    // thirdweb OpenEditionERC721 price discovery
+    // Check if it's an Extension contract first (ERC1155 with signature minting)
+    if (contractInfo.isERC1155) {
+      console.log(`[Price Optimizer] Thirdweb ERC1155 Extension detected, trying Extension pricing...`);
+      
+      // Pattern 1: Try to get price from common Extension functions
+      try {
+        // Many Extensions have a public price function
+        const price = await client.readContract({
+          address: params.contractAddress,
+          abi: [
+            {
+              inputs: [],
+              name: "price",
+              outputs: [{ name: "", type: "uint256" }],
+              stateMutability: "view",
+              type: "function",
+            },
+          ],
+          functionName: "price",
+        });
+        
+        if (price && typeof price === 'bigint') {
+          console.log(`[Price Optimizer] ✅ Found Extension price function: ${price}`);
+          return {
+            mintPrice: price * amount,
+            totalCost: price * amount,
+          };
+        }
+      } catch (error) {
+        console.log(`[Price Optimizer] Extension price() function not found: ${error}`);
+      }
+      
+      // Pattern 2: Try mintPrice function
+      try {
+        const mintPrice = await client.readContract({
+          address: params.contractAddress,
+          abi: [
+            {
+              inputs: [],
+              name: "mintPrice",
+              outputs: [{ name: "", type: "uint256" }],
+              stateMutability: "view",
+              type: "function",
+            },
+          ],
+          functionName: "mintPrice",
+        });
+        
+        if (mintPrice && typeof mintPrice === 'bigint') {
+          console.log(`[Price Optimizer] ✅ Found Extension mintPrice function: ${mintPrice}`);
+          return {
+            mintPrice: mintPrice * amount,
+            totalCost: mintPrice * amount,
+          };
+        }
+      } catch (error) {
+        console.log(`[Price Optimizer] Extension mintPrice() function not found: ${error}`);
+      }
+      
+      // Pattern 3: Try to get price from claimCondition mapping (for ERC1155 Extensions)
+      try {
+        const claimCondition = await client.readContract({
+          address: params.contractAddress,
+          abi: [
+            {
+              inputs: [{ name: "tokenId", type: "uint256" }],
+              name: "claimCondition",
+              outputs: [
+                { name: "startTimestamp", type: "uint256" },
+                { name: "maxClaimableSupply", type: "uint256" },
+                { name: "supplyClaimed", type: "uint256" },
+                { name: "merkleRoot", type: "bytes32" },
+                { name: "pricePerToken", type: "uint256" },
+                { name: "currency", type: "address" },
+                { name: "metadata", type: "string" },
+              ],
+              stateMutability: "view",
+              type: "function",
+            },
+          ],
+          functionName: "claimCondition",
+          args: [0n], // Try with tokenId 0 (from successful transaction)
+        });
+        
+        if (claimCondition && Array.isArray(claimCondition) && claimCondition.length >= 5) {
+          const pricePerToken = claimCondition[4]; // Index 4 is pricePerToken
+          if (typeof pricePerToken === 'bigint' && pricePerToken > 0n) {
+            console.log(`[Price Optimizer] ✅ Found Extension claimCondition price: ${pricePerToken}`);
+            return {
+              mintPrice: pricePerToken * amount,
+              totalCost: pricePerToken * amount,
+            };
+          }
+        }
+      } catch (error) {
+        console.log(`[Price Optimizer] Extension claimCondition check failed: ${error}`);
+      }
+      
+      // Pattern 4: Hardcoded fallback for known contracts (temporary solution)
+      if (params.contractAddress.toLowerCase() === "0xcd0bafa3bba1b32869343fb69d2778daf4412181") {
+        console.group("💰 [Price Optimizer] Using hardcoded price for known Extension");
+        console.log("Contract address:", params.contractAddress);
+        console.log("Amount:", params.amount);
+        // 1 XDAI = 1e18 wei
+        const oneXDAI = BigInt("1000000000000000000");
+        const mintPrice = oneXDAI * BigInt(params.amount || 1);
+        const totalCost = oneXDAI * BigInt(params.amount || 1);
+        console.log("Unit price (XDAI):", "1");
+        console.log("Total mint price:", mintPrice.toString(), "wei");
+        console.log("Total cost:", totalCost.toString(), "wei");
+        console.groupEnd();
+        return {
+          mintPrice,
+          totalCost,
+        };
+      }
+      
+      console.log(`[Price Optimizer] ⚠️ Could not determine Extension price, defaulting to free`);
+      return { mintPrice: BigInt(0), totalCost: BigInt(0) };
+    }
+    
+    // Original Drop contract logic for ERC721
     try {
       // First get the active claim condition ID
       const claimCondition = await client.readContract({

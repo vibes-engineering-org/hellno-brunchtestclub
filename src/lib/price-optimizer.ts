@@ -387,8 +387,8 @@ export async function fetchPriceData(
         if (price && typeof price === 'bigint') {
           console.log(`[Price Optimizer] ✅ Found Extension price function: ${price}`);
           return {
-            mintPrice: price * amount,
-            totalCost: price * amount,
+            mintPrice: price * BigInt(params.amount || 1),
+            totalCost: price * BigInt(params.amount || 1),
           };
         }
       } catch (error) {
@@ -414,8 +414,8 @@ export async function fetchPriceData(
         if (mintPrice && typeof mintPrice === 'bigint') {
           console.log(`[Price Optimizer] ✅ Found Extension mintPrice function: ${mintPrice}`);
           return {
-            mintPrice: mintPrice * amount,
-            totalCost: mintPrice * amount,
+            mintPrice: mintPrice * BigInt(params.amount || 1),
+            totalCost: mintPrice * BigInt(params.amount || 1),
           };
         }
       } catch (error) {
@@ -452,8 +452,8 @@ export async function fetchPriceData(
           if (typeof pricePerToken === 'bigint' && pricePerToken > 0n) {
             console.log(`[Price Optimizer] ✅ Found Extension claimCondition price: ${pricePerToken}`);
             return {
-              mintPrice: pricePerToken * amount,
-              totalCost: pricePerToken * amount,
+              mintPrice: pricePerToken * BigInt(params.amount || 1),
+              totalCost: pricePerToken * BigInt(params.amount || 1),
             };
           }
         }

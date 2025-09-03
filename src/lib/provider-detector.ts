@@ -548,6 +548,7 @@ export async function detectNFTProvider(
                 },
               ],
               functionName: functionName,
+              args: [""], // Empty string as extension name argument
             });
             
             console.log(`[Thirdweb Detection] ✅ Found NFT Extension function with param: ${functionName}`);

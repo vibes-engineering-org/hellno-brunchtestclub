@@ -1,26 +1,23 @@
 import { PROJECT_TITLE } from "~/lib/constants";
 
 export async function GET() {
-  const appUrl =
-    process.env.NEXT_PUBLIC_URL ||
-    `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const appUrl = process.env.NEXT_PUBLIC_URL;
 
   const config = {
     accountAssociation: {
       header:
-        "eyJmaWQiOjEzNTk2LCJ0eXBlIjoiY3VzdG9keSIsImtleSI6IjB4ODE3MzE4RDZmRkY2NkExOGQ4M0ExMzc2QTc2RjZlMzBCNDNjODg4OSJ9",
+        "eyJmaWQiOjg2OTk5OSwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDc2ZDUwQjBFMTQ3OWE5QmEyYkQ5MzVGMUU5YTI3QzBjNjQ5QzhDMTIifQ",
       payload:
-        "eyJkb21haW4iOiJmYXJjYXN0ZXItbWluaWFwcC10ZW1wbGF0ZS52ZXJjZWwuYXBwIn0",
+        "eyJkb21haW4iOiJoZWxsbm8tYnJ1bmNodGVzdGNsdWIudmVyY2VsLmFwcCJ9",
       signature:
-        "MHg5ZjkyZTdkNjRmZTNhNTE4YTEzOTBmZTdlYzAwOWQzODUzZWM2N2RmOTZiYjg1MzAwOGRlZDExNjVmOGE5OGVlNDQyYmI0MDU3OTI0ZmEzOGE3N2NlYWRiYThiMTRiN2IzMTY5N2ZjYWVlZGM3MTE1YWNiMTFmYjc2Y2EzYTc0YzFj",
+        "MHhkYjM1MTMwNTJhZDRhM2U4YjIzYjI4NzBkYzE3YWRjZjY1YzljNGJiZmFiNGRkNGNhNzY2MDQ0YTdmNGRjNjdjMGY2MmE3MzJjOGIzMjk0OGY3Yzc3NmYwNjc2OWM3Y2MwYTM1YmM2MzA1MzBjYTkxN2FjOGMyNDdjMjhhNTEwODFi",
     },
-    miniapp: {
+    frame: {
       version: "1",
       name: PROJECT_TITLE,
       iconUrl: `${appUrl}/icon.png`,
       homeUrl: appUrl,
-      imageUrl: `${appUrl}/frames/hello/opengraph-image`,
-      ogImageUrl: `${appUrl}/frames/hello/opengraph-image`,
+      imageUrl: `${appUrl}/og.png`,
       buttonTitle: "Open",
       splashImageUrl: `${appUrl}/splash.png`,
       splashBackgroundColor: "#f7f7f7",
